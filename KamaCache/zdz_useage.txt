@@ -1,0 +1,34 @@
+// CacheServerARCMySQL.cpp
+// 说明：KArcCache + MySQL 的读透/写透 KV 服务，增强：
+//  - SingleFlight（请求合并）避免击穿
+//  - TTL + 抖动（jitter）避免雪崩
+//  - 负缓存（negative cache）避免穿透
+//  - Bloom 过滤（不存在的 key 快速拒绝）
+//  - MySQL 连接池、Bulk 协议、写队列、有序回包、STATS 观测
+//
+// 构建：
+// g++ CacheServerARCMySQL.cpp -std=c++17 -O2 -pthread   -I/home/zdz/KamaCache   -L/usr/lib/x86_64-linux-gnu   -lboost_system -lmysqlcppconn   -o cache_server
+// 备注：某些系统需要链接 -lmysqlcppconn8
+//
+// 运行：
+// ./cache_server <port> <arc_capacity> [mysql_pool_size]
+// 例：./cache_server 6380 10000 8
+//
+// 环境变量（可选）：
+//   MYSQL_HOST=tcp://127.0.0.1:3306
+//   MYSQL_USER=root
+//   MYSQL_PASS=yourpass
+//   MYSQL_DB=cache
+//   MYSQL_TABLE=kv
+//   MYSQL_POOL=8              // 连接池大小
+//   CACHE_TTL=300             // 默认 TTL（秒，正缓存）
+//   CACHE_JITTER=60           // TTL 抖动范围（0..J 秒）
+//   CACHE_NEG_TTL=60          // 负缓存 TTL（秒）
+//
+// 协议：
+//   GET <key>                              -> 命中：$<len>\n<payload>\n；未命中：$-1\n
+//   SET <key> $<len>\n<payload>\n         -> 支持任意字节/换行（推荐）
+//   SET <key> <value...>                  -> 兼容旧格式（不含换行）
+//   SETEX <key> <ttl> $<len>\n<payload>\n -> 指定 TTL 的 SET（或旧格式 SETEX <key> <ttl> <value...>）
+//   DEL <key>                             -> 暂不支持（返回 -ERR not-supported）
+//   STATS                                  -> 返回统计指标
